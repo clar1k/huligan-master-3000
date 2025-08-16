@@ -124,4 +124,4 @@ if (bot.isErr()) {
 }
 
 // bot.value.start();
-export default webhookCallback(bot.value, "https");
+export default webhookCallback(bot.value, "std/http");
