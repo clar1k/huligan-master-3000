@@ -4,8 +4,6 @@ import { errAsync, okAsync } from "neverthrow";
 import { type } from "arktype";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import OpenAI from "openai";
-import ffmpeg from "fluent-ffmpeg";
-import * as stream from "stream";
 
 import * as ai from "ai";
 
@@ -108,7 +106,7 @@ const setupBot = async () => {
         );
 
         return ctx.reply(result.text, {
-          parse_mode: "MarkdownV2",
+          // parse_mode: "MarkdownV2",
         });
       } catch (error) {
         console.error("Error analyzing video:", error);
