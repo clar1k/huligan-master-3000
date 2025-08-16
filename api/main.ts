@@ -9,7 +9,7 @@ export const envType = type({
   BOT_TOKEN: "string",
   OPENROUTER_API_KEY: "string",
 });
-
+console.log("you can just build things");
 const generateText = async (
   openrouter: ReturnType<typeof createOpenRouter>,
   videoBuffer: Buffer
