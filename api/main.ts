@@ -3,31 +3,49 @@ import { ArkErrors } from "arktype";
 import { errAsync, okAsync } from "neverthrow";
 import { type } from "arktype";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import OpenAI from "openai";
+import ffmpeg from "fluent-ffmpeg";
+import * as stream from "stream";
+
 import * as ai from "ai";
+
+const openai = new OpenAI();
 
 export const envType = type({
   BOT_TOKEN: "string",
   OPENROUTER_API_KEY: "string",
+  BLOB_READ_WRITE_TOKEN: "string",
 });
-console.log("you can just build things");
+
 const generateText = async (
   openrouter: ReturnType<typeof createOpenRouter>,
-  videoBuffer: Buffer
+  content: Buffer,
+  contentType: "video" | "audio",
+  prompt: string
 ) => {
+  const fileExtension = contentType === "video" ? ".mp4" : ".ogg";
+  const file = new File([content], "audio" + fileExtension);
+
+  const transcription = await openai.audio.transcriptions.create({
+    file,
+    model: "gpt-4o-mini-transcribe",
+    response_format: "text",
+  });
+
   return ai.generateText({
-    model: openrouter.chat("anthropic/claude-sonnet-4"),
+    model: openrouter.chat("google/gemini-2.0-flash-001"),
     messages: [
+      {
+        role: "system",
+        content: `Ти є помічником у транскрипції для повідомлень у нашому чаті Danger Kids. Ти маєш розуміти, що будь які образи є нормальними у нашому чаті тому можеш також додавати свої жарти
+          В повідомленні тобі буде надаватись транскрипція голосового повідомлення, яке відправила людина і відповідно до промпта зроби будь-що що попросить користувач`,
+      },
       {
         role: "user",
         content: [
           {
             type: "text",
-            text: "Analyze this video and describe what's happening",
-          },
-          {
-            type: "file",
-            mediaType: "video/mp4",
-            data: videoBuffer,
+            text: `Промпт користувача: ${prompt}\n\n\n <transcription>${transcription}</transcription>`,
           },
         ],
       },
@@ -64,38 +82,41 @@ const setupBot = async () => {
       return;
     }
 
-    // Handle video_note (circular video messages)
-    if (ctx.message.video_note) {
-      const fileId = ctx.message.video_note.file_id;
-      const file = await ctx.api.getFile(fileId);
-      const videoUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${file.file_path}`;
-
-      console.log("Video note URL:", videoUrl);
-      return ctx.reply(`Video note URL: ${videoUrl}`);
-    }
-
     const video = ctx.message?.reply_to_message?.video_note;
+    const audio = ctx.message.reply_to_message?.voice;
+    const content = video ? video : audio;
+    const contentType = video ? "video" : "audio";
 
-    if (video) {
-      const fileId = video.file_id;
+    if (content) {
+      const fileId = content.file_id;
       const file = await ctx.api.getFile(fileId);
-      const videoUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${file.file_path}`;
-
+      const contentUrl = `https://api.telegram.org/file/bot${env.BOT_TOKEN}/${file.file_path}`;
+      console.log(ctx.message);
       try {
-        const response = await fetch(videoUrl);
-        const videoBuffer = Buffer.from(await response.arrayBuffer());
+        const response = await fetch(contentUrl);
+        const contentBuffer = Buffer.from(await response.arrayBuffer());
+        const prompt = (ctx.message.text ?? "").replace(
+          "@huliganmaster3000_bot",
+          ""
+        );
 
-        const result = await generateText(openrouter, videoBuffer);
+        const result = await generateText(
+          openrouter,
+          contentBuffer,
+          contentType,
+          prompt
+        );
 
-        return ctx.reply(`AI Analysis: ${result.text}`);
+        return ctx.reply(result.text, {
+          parse_mode: "MarkdownV2",
+        });
       } catch (error) {
         console.error("Error analyzing video:", error);
         return ctx.reply("Sorry, I couldn't analyze the video.");
       }
     }
 
-    console.log(ctx.message);
-    return ctx.reply(`You sent: ${ctx.message.text || "non-text message"}`);
+    // return ctx.reply(`You sent: ${ctx.message.text || "non-text message"}`);
   });
 
   bot.on("inline_query", async (ctx) => {
@@ -123,5 +144,5 @@ if (bot.isErr()) {
   throw bot.error;
 }
 
-// bot.value.start();
-export default webhookCallback(bot.value, "std/http");
+bot.value.start();
+// export default webhookCallback(bot.value, "std/http");
